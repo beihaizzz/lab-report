@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 
 
-# Root-level script
-SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "parse_pptx.py"
+# Nested lab-report/scripts script
+SCRIPT = Path(__file__).parent.parent / "scripts" / "parse_pptx.py"
 
 
 class TestSlideCount:

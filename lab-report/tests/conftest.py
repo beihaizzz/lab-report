@@ -11,11 +11,11 @@ import pytest
 LAB_REPORT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(LAB_REPORT_ROOT))
 
-# Also add root-level scripts (E:\lab-report\scripts\) for imports like
+# Add the nested lab-report/scripts for imports like
 # progress_manager, student_info, git_manager, parse_pptx
-ROOT_SCRIPTS = LAB_REPORT_ROOT.parent / "scripts"
-if ROOT_SCRIPTS.exists():
-    sys.path.insert(0, str(ROOT_SCRIPTS))
+LAB_REPORT_SCRIPTS = LAB_REPORT_ROOT / "scripts"
+if LAB_REPORT_SCRIPTS.exists():
+    sys.path.insert(0, str(LAB_REPORT_SCRIPTS))
 
 # Project root (E:\lab-report\)
 PROJECT_ROOT = LAB_REPORT_ROOT.parent

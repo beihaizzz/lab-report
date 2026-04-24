@@ -11,7 +11,7 @@ import student_info
 
 
 # Path to CLI script
-STUDENT_INFO_SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "student_info.py"
+STUDENT_INFO_SCRIPT = Path(__file__).parent.parent / "scripts" / "student_info.py"
 
 
 class TestDiscoverStudentInfo:

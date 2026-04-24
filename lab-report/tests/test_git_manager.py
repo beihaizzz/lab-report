@@ -3,8 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Root-level script
-SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "git_manager.py"
+# Nested lab-report/scripts script
+SCRIPT = Path(__file__).parent.parent / "scripts" / "git_manager.py"
 
 
 class TestNonGitDir:
