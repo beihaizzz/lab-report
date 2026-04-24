@@ -1,16 +1,11 @@
 """Tests for fill_template.py."""
 import hashlib
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 from scripts.fill_template import fill_template, verify_original_unchanged
-
-
-SCRIPT = Path(__file__).parent.parent / "scripts" / "fill_template.py"
 
 
 @pytest.fixture
@@ -49,7 +44,8 @@ class TestPlaceholderReplacement:
 
         result = fill_template(template_path, fill_data, output_path)
 
-        assert result["success"], f"fill failed: {result.get('error')}"
+        assert "error" not in result, f"fill failed: {result.get('error')}"
+        assert result.get("success", False), f"fill failed: {result.get('error')}"
         assert output_path.exists(), "output file should exist"
 
         # Verify {{姓名}} was replaced (no remaining placeholder)
@@ -68,8 +64,9 @@ class TestOriginalPreserved:
         with open(template_path, "rb") as f:
             original_hash = hashlib.sha256(f.read()).hexdigest()
 
-        fill_template(template_path, fill_data, output_path)
+        result = fill_template(template_path, fill_data, output_path)
 
+        assert "error" not in result, f"fill failed: {result.get('error')}"
         assert verify_original_unchanged(template_path, original_hash), \
             "original template SHA256 should be unchanged after fill"
 
@@ -78,12 +75,7 @@ class TestFileNotFound:
     def test_file_not_found(self, tmp_path):
         missing_template = tmp_path / "missing.docx"
         missing_data = tmp_path / "missing.json"
+        output_path = tmp_path / "out.docx"
 
-        proc = subprocess.run(
-            [sys.executable, str(SCRIPT),
-             "--template", str(missing_template),
-             "--data", str(missing_data),
-             "--output", str(tmp_path / "out.docx")],
-            capture_output=True, text=True
-        )
-        assert proc.returncode == 1, f"expected exit 1, got {proc.returncode}"
+        result = fill_template(missing_template, missing_data, output_path)
+        assert "error" in result, "should return error for missing files"

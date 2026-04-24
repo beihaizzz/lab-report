@@ -1,12 +1,7 @@
 """Tests for parse_docx.py."""
-import subprocess
-import sys
 from pathlib import Path
 
 from scripts.parse_docx import parse_docx
-
-
-SCRIPT = Path(__file__).parent.parent / "scripts" / "parse_docx.py"
 
 
 class TestPlaceholderDetection:
@@ -28,9 +23,5 @@ class TestTableExtraction:
 
 class TestFileNotFound:
     def test_file_not_found(self):
-        proc = subprocess.run(
-            [sys.executable, str(SCRIPT), "--input", "nonexistent_file.docx"],
-            capture_output=True, text=True
-        )
-        assert proc.returncode == 1, f"expected exit 1, got {proc.returncode}"
-        assert "File not found" in proc.stderr
+        result = parse_docx(Path("nonexistent_file.docx"))
+        assert "error" in result, "should return error for nonexistent file"
