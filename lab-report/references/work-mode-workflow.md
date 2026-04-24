@@ -51,6 +51,54 @@ Collect the student's response and use it as the primary data source. You can st
 
 ---
 
+## Step 1.5: Confirm Experiment Metadata (fix 1.1)
+
+**Before generating content, actively ask the student for experimental metadata** using the `question` tool.
+
+Required metadata to confirm:
+
+- 实验日期: （如 2025年4月21日）
+- 实验地点: （实验室名称 / 机房编号，如 实验楼B301）
+- 实验学时: （如 2学时 / 4学时）
+- 指导教师: （姓名）
+- 同组人员及分工: （可选）
+
+**If `学生信息.md` already exists**, auto-fill 姓名/学号/学院/专业/班级, but still confirm the per-experiment fields (日期、地点、学时、教师).
+
+### Example prompt:
+
+```
+在生成报告前，请确认以下实验信息：
+
+实验日期：2025年4月21日
+实验地点：_________
+指导教师：_________
+同组人员及分工：_________（选填）
+
+另外，你希望报告采用哪种风格？
+1）perfect（完整专业，适合提交）
+2）normal（标准填写，偏简洁）
+```
+
+Save confirmed metadata to `.lab-report/config.json` for reuse across re-generations.
+
+---
+
+## Step 1.6: Offer Style Selection (fix 1.2)
+
+After confirming metadata, explicitly ask the student which report style they want:
+
+| Style | When to recommend |
+|-------|-------------------|
+| `perfect` | 报告要提交给老师评分 — 内容充实，结构完整 |
+| `normal` | 快速出稿，自己留存 — 内容标准，偏简洁 |
+
+Pass the user's choice to `fill_template.py` via `--style`.
+
+Both styles apply de-AI guidelines (no 首先/其次/最后, natural paragraphs).
+
+---
+
 ## Step 2: Collect Student Info
 
 Run the student info discovery script:
@@ -148,7 +196,70 @@ If a placeholder has no data source and the student cannot provide it:
 
 ---
 
-## Step 5: Build Template Data JSON
+## Step 4.5: Analyze Experiment Photos (fix 3.1 / 3.2)
+
+**Before building the template data JSON, scan the project directory for experiment photos/videos and analyze them.**
+
+### Discovery
+
+```bash
+glob("**/*.jpg")  # or .png, .jpeg, .mp4, .gif
+```
+
+Common folder names: `实验一照片/`, `实验图片/`, `screenshots/`, `实验现象/`
+
+### Required Analysis
+
+For **every image or video file found**, invoke the `read` or `look_at` tool to visually analyze its content:
+
+| Photo Type | What to extract |
+|------------|----------------|
+| **Code screenshots** | Actual delay values, GPIO pin numbers, loop logic, register names |
+| **Hardware wiring** | Port connections, breadboard layout, LED positions |
+| **LED/display status** | Which LEDs are lit, color, brightness, timing sequence |
+| **Measurement results** | Oscilloscope readings, multimeter values, signal waveforms |
+| **Videos** | Playback duration, LED flow direction, blink frequency (estimate) |
+
+### Cross-Validation
+
+Compare extracted information against the experiment guide requirements:
+
+- Are the timing values in the code consistent with what the guide asks for?
+- Is the wiring diagram consistent with the described pin connections?
+- If inconsistencies found, flag them to the student for confirmation:
+  ```
+  照片中显示延时为 2500ms，但实验指导书要求 500ms。请确认：你实际使用了哪个值？
+  ```
+
+### Integration into Report Content
+
+Use the information extracted from photos to make report content accurate:
+
+- **实验原理**: Describe the **actual** code logic observed, not just generic theory
+- **实验数据**: Record actual timing values, LED states from photos
+- **实验结果**: Reference specific photo observations
+- **实验现象**: Describe what the photos/videos actually show
+
+### Image Placeholder Insertion
+
+After analysis, create an image placeholder instruction file (`.lab-report/image-placeholders.json`) so `fill_template.py` can mark where photos should go:
+
+```json
+[
+  {
+    "placeholder": "[insert_image_wiring]",
+    "label": "请在此处粘贴：硬件接线照片"
+  },
+  {
+    "placeholder": "[insert_image_led_flow]",
+    "label": "请在此处粘贴：LED流水灯现象视频截图"
+  }
+]
+```
+
+In the report content, add these markers at appropriate locations. The `fill_template.py --image-placeholders` flag will replace them with styled placeholders.
+
+---
 
 Create a JSON file (e.g., `.lab-report/template-data.json`) with all required fields:
 
@@ -199,20 +310,26 @@ python scripts/fill_template.py \
 
 ### Style Options
 
-| Style | Behavior |
-|-------|----------|
-| `normal` | Standard fill. Content may have minor AI patterns. |
-| `perfect` | Applies de-AI style checks. Warns on banned words. Use for final submissions. |
+| Style | Behavior | When to use |
+|-------|----------|-------------|
+| `normal` | Standard fill. Content may have minor AI patterns. | 快速出稿、自己留存 |
+| `perfect` | Content more detailed; applies de-AI style. Use for submission. | 提交给老师评分 |
 
 Both styles apply CJK font fixes (宋体 for body text, 黑体 for headings) via the `w:eastAsia` attribute.
 
-### What the Script Does
+### What the Script Does (Enhanced)
 
 1. Copies the template to the output path (never modifies the original)
-2. Renders all `{{placeholder}}` fields using Jinja2 via `docxtpl`
-3. Verifies CJK fonts on all runs containing Chinese characters
-4. Checks for unreplaced placeholders in the output
-5. Returns a JSON result with `success`, `placeholders_filled`, and `placeholders_missing`
+2. **Snapshots** original cell formatting (font, size, bold, alignment) for style inheritance
+3. Renders all `{{placeholder}}` fields using Jinja2 via `docxtpl`
+4. **Post-processes formatting**:
+   - Inherits original cell styles from template (fixes font/size/alignment drift — fix 2.1)
+   - Applies heading/body differentiation: 黑体 for section headers, 宋体 for body text (fix 2.2)
+   - Removes extra empty paragraphs between content sections (fix 2.3)
+5. Inserts styled image placeholder markers if `--image-placeholders` is provided (fix 2.4)
+6. Verifies CJK fonts on all runs containing Chinese characters
+7. Checks for unreplaced placeholders in the output
+8. Returns a JSON result with `success`, `placeholders_filled`, and `placeholders_missing`
 
 ---
 
@@ -308,13 +425,15 @@ The script stages all changes and commits. It silently exits if the directory is
 
 | Situation | Response |
 |-----------|----------|
-| No template DOCX found | Ask student to provide one; list available `.docx` files in the directory |
+| No template DOCX found | Ask student to provide one; list available `.docx` and `.doc` files in the directory |
 | Template has no placeholders | The template may use a different syntax; ask student to confirm |
 | Data JSON missing keys | Prompt student for missing values; use "暂无" as fallback |
 | `fill_template.py` fails | Check error message; common causes: missing dependency, corrupted template |
 | Unreplaced placeholders remain | Identify which ones, ask student for values, rebuild data JSON |
 | CJK characters display as tofu | Re-run fill; the script applies CJK fonts automatically |
 | Student info file not found | Create template with `student_info.py --create`, ask student to fill it in |
+| Photos/videos found but not analyzed | Delegate `read` or `look_at` for each image; extract code values and wiring details |
+| Image placeholders missing in output | Ensure `.lab-report/image-placeholders.json` exists and references match template markers |
 
 ---
 
@@ -336,8 +455,12 @@ python scripts/parse_docx.py --input template.docx
 # Fill template (normal style)
 python scripts/fill_template.py -t template.docx -d data.json -o output.docx --style normal
 
-# Fill template (perfect style, de-AI)
-python scripts/fill_template.py -t template.docx -d data.json -o output.docx --style perfect
+# Fill template (perfect style, de-AI, with image placeholders)
+python scripts/fill_template.py -t template.docx -d data.json -o output.docx \
+  --style perfect --image-placeholders .lab-report/image-placeholders.json
+
+# Fill template and save config for reuse
+python scripts/fill_template.py -t template.docx -d data.json -o output.docx --style normal
 
 # Auto-commit output
 python scripts/git_manager.py --message "生成实验报告"

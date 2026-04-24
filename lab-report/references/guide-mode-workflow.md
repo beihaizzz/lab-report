@@ -160,6 +160,19 @@ The student drives progress. The AI responds to these triggers:
 - **Before** a screenshot-worthy step begins (not after)
 - Format: `📸 提醒: 这一步需要拍照记录 [description]`
 
+### What to Capture — Be Specific
+
+Instead of generic "请拍照", tell the student exactly what to photograph:
+
+| Experiment Phase | Specific photo guidance |
+|-----------------|------------------------|
+| 硬件连接完成后 | 📸 拍摄完整接线图（确保所有端口清晰可见） |
+| 第一次上电时 | 📸 拍摄初始状态（LED 亮灭情况、屏幕显示数据） |
+| 修改参数后 | 📸 拍摄修改后的现象对比 |
+| 测量数据时 | 📸 拍摄仪器读数、示波器波形、万用表数值 |
+| 代码界面 | 📸 拍摄代码截图或拍照（确保延时值、引脚号清晰） |
+| 实验结束 | 📸 拍摄最终实验成果（如流水灯完整效果） |
+
 ### After the Step
 
 - If the step was screenshot-worthy and the student marks it complete, ask:
@@ -177,7 +190,51 @@ This sets `captured: true` in the progress data.
 
 ---
 
-## Step 7: Completion
+## Step 7: Post-Experiment Photo Collection Review
+
+After all steps are completed but before transitioning to Work Mode, **actively review the captured screenshots/photos directory**.
+
+### Discovery
+
+Check for common screenshot directories:
+```bash
+glob("**/screenshots/*")
+glob("**/实验一照片/*")
+glob("**/*.jpg")  
+glob("**/*.png")
+```
+
+### Analysis
+
+For each detected photo, delegate `read` or `look_at` to extract:
+
+1. **Code screenshots**: Read actual delay values, GPIO pins, loop structures
+2. **Hardware photos**: Confirm wiring matches described connections
+3. **Phenomenon photos**: Confirm described LED states match images
+
+### Cross-check
+
+Compare extracted photo data against what was recorded during Guide Mode:
+
+- If photo shows `delay_ms(2500)` but student said "500ms" → flag inconsistency
+- If photo shows LED on pin PB0 but guide says PA1 → flag for confirmation
+
+### Report for Work Mode
+
+Save the photo analysis findings to use in Work Mode:
+
+```json
+{
+  "photos_analyzed": 9,
+  "code_values_extracted": {"delay_ms": 2500, "gpio_port": "PB0"},
+  "wiring_confirmed": true,
+  "inconsistencies": []
+}
+```
+
+---
+
+## Step 8: Completion
 
 When all steps are done (`status` becomes `completed`):
 
@@ -207,6 +264,9 @@ When all steps are done (`status` becomes `completed`):
 | Progress file corrupted | Re-initialize with `--reset` and ask student to confirm step count |
 | Student provides wrong step number | List current steps and ask them to clarify |
 | Student asks about a step not in the guide | Use the parsed content to provide context; if unavailable, say so honestly |
+| Photo shows different values than described | Flag the inconsistency: "照片显示延时=2500ms，你之前说的是500ms，请问实际是哪个？" |
+| Student did not take required screenshots | Remind before transitioning to Work Mode; suggest taking photos now |
+| Video file found | Use `read` tool to extract duration and visual content; describe phenomenon from video |
 
 ---
 

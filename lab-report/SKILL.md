@@ -51,13 +51,16 @@ Summary:
 See `references/work-mode-workflow.md` for detailed workflow.
 
 Summary:
-1. Check if `.lab-report/progress.json` exists (from Guide Mode)
-2. Extract experiment data from progress OR ask student
-3. Parse template DOCX → identify `{{placeholders}}`
-4. Build JSON data context from student info + experiment data
-5. Call `scripts/fill_template.py` to generate report
-6. Generate new Word file (original template untouched)
-7. Auto-commit via git if enabled
+1. **Confirm metadata**: AI asks for experiment date, location, teacher, group members using `question` tool
+2. **Ask style**: Offer `perfect` (professional) or `normal` (standard) style
+3. Check if `.lab-report/progress.json` exists (from Guide Mode)
+4. Extract experiment data from progress OR ask student to describe
+5. **Analyze photos**: Scan directory for experiment photos/videos → `read`/`look_at` each to extract code values, wiring details, phenomenon
+6. Parse template DOCX → identify `{{placeholders}}`
+7. Build JSON data context from student info + experiment metadata + photo analysis
+8. Call `scripts/fill_template.py` to generate report (with style inheritance from template cells)
+9. Generate new Word file (original template untouched, font/size/alignment inherited)
+10. Auto-commit via git if enabled
 
 ## File Format Support
 | Format | Read | Script |
