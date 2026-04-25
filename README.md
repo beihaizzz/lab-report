@@ -16,7 +16,7 @@
 请帮我安装 lab-report skill。这是一个帮助大学生完成实验报告的 OpenCode Skill。
 
 安装步骤：
-1. 克隆仓库：git clone https://github.com/beihaizzz/lab-report.git
+1. 克隆仓库：git clone https://github.com/beihaizzz/lab-report.skill.git
 2. 将 lab-report/lab-report/ 目录复制到 OpenCode skill 目录：
    - Windows: C:\Users\<用户名>\.claude\skills\lab-report\
    - macOS/Linux: ~/.claude/skills/lab-report/
