@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Template filling with docxtpl, CJK support, de-AI styles, and format inheritance."""
+﻿#!/usr/bin/env python3
+"""Template filling — uses inspect data for exact formatting (no guessing)."""
 
 import argparse
 import hashlib
@@ -12,8 +12,7 @@ from pathlib import Path
 
 try:
     from docx import Document
-    from docx.shared import Pt, Cm, Inches
-    from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
     from docx.oxml.ns import qn
     from docxtpl import DocxTemplate
     HAS_DOCX = True
@@ -21,24 +20,6 @@ except ImportError:
     HAS_DOCX = False
 
 BANNED_WORDS = ['首先', '其次', '最后', '总而言之', '值得注意的是', '综上所述', '不可否认']
-
-# ── Style map: map placeholder names to formatting roles ────────────────────
-HEADING_PLACEHOLDERS = {
-    '实验目的', '实验原理', '实验器材', '实验步骤',
-    '实验数据', '实验结果', '实验结论', '实验要求',
-}
-CODE_PLACEHOLDERS = {'实验程序', '程序代码', '代码', '实验代码'}
-INFO_PLACEHOLDERS = {'姓名', '学号', '学院', '专业', '班级', '课程名',
-                     '实验名称', '实验日期', '实验地点'}
-
-STYLE_MAP = {
-    'title':     {'font_name': '黑体', 'font_size': Pt(12), 'bold': True, 'align': WD_PARAGRAPH_ALIGNMENT.CENTER},
-    'heading1':  {'font_name': '黑体', 'font_size': Pt(12), 'bold': True, 'align': WD_PARAGRAPH_ALIGNMENT.LEFT},
-    'heading2':  {'font_name': '黑体', 'font_size': Pt(11), 'bold': True, 'align': WD_PARAGRAPH_ALIGNMENT.LEFT},
-    'body':      {'font_name': '宋体', 'font_size': Pt(10.5), 'bold': False, 'align': None},
-    'code':      {'font_name': 'Courier New', 'font_size': Pt(9), 'bold': False, 'align': None},
-    'info_cell': {'font_name': '宋体', 'font_size': Pt(10.5), 'bold': False, 'align': WD_PARAGRAPH_ALIGNMENT.CENTER},
-}
 
 
 def _find_libreoffice() -> str | None:
@@ -63,8 +44,7 @@ def _convert_to_docx(filepath: Path) -> Path | None:
         result = subprocess.run(
             [lo, '--headless', '--convert-to', 'docx', '--outdir',
              str(filepath.parent), str(filepath)],
-            capture_output=True, text=True, timeout=60
-        )
+            capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             docx = filepath.with_suffix('.docx')
             if docx.exists():
@@ -74,262 +54,227 @@ def _convert_to_docx(filepath: Path) -> Path | None:
     return None
 
 
-def set_cjk_font(run, font_name='宋体'):
-    """Set CJK font for a run to prevent tofu."""
-    run.font.name = font_name
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+def _set_run_font(run, font_name=None, font_size_pt=None, bold=None, east_asia=None):
+    """Set font properties. ONLY sets eastAsia when template explicitly had it."""
+    if font_name:
+        run.font.name = font_name
+    if font_size_pt:
+        run.font.size = Pt(font_size_pt)
+    if bold is not None:
+        run.font.bold = bold
+    if east_asia:
+        rPr = run._element.find(qn('w:rPr'))
+        if rPr is None:
+            rPr = run._element.makeelement(qn('w:rPr'), {})
+            run._element.insert(0, rPr)
+        rFonts = rPr.find(qn('w:rFonts'))
+        if rFonts is None:
+            rFonts = rPr.makeelement(qn('w:rFonts'), {})
+            rPr.append(rFonts)
+        rFonts.set(qn('w:eastAsia'), east_asia)
 
 
-def apply_style_to_run(run, style: dict):
-    """Apply a STYLE_MAP dict to a run."""
-    run.font.name = style.get('font_name', '宋体')
-    set_cjk_font(run, style.get('font_name', '宋体'))
-    if style.get('font_size'):
-        run.font.size = style['font_size']
-    if style.get('bold'):
-        run.font.bold = True
+def _verify_no_missing_placeholders(doc: Document) -> list:
+    full_text = " ".join([p.text for p in doc.paragraphs])
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                full_text += " " + cell.text
+    return re.findall(r'\{\{([^}]+)\}\}', full_text)
 
 
-def apply_style_to_paragraph(para, style: dict):
-    """Apply a STYLE_MAP dict to a paragraph (alignment + runs)."""
-    align = style.get('align')
-    if align is not None:
-        para.alignment = align
-    for run in para.runs:
-        apply_style_to_run(run, style)
+def _compare_with_inspect(output_doc: Document, inspect_data: dict) -> list:
+    """Post-fill diff: detect overwritten label cells."""
+    warnings = []
+    out_tables = output_doc.tables
+    for t_idx, table in enumerate(inspect_data.get("tables", [])):
+        if t_idx >= len(out_tables):
+            break
+        for cell_info in table.get("cells", []):
+            if not cell_info.get("is_label"):
+                continue
+            out_cell = out_tables[t_idx].rows[cell_info["row"]].cells[cell_info["column"]]
+            out_text = out_cell.text.strip()
+            in_text = cell_info.get("text", "").strip()
+            if out_text and out_text != in_text and in_text:
+                warnings.append(
+                    f"LABEL R{cell_info['row']}C{cell_info['column']}: "
+                    f"\"{in_text}\" overridden as \"{out_text[:50]}\""
+                )
+    return warnings
 
 
-def _detect_placeholder_role(text: str) -> str:
-    """Detect the role of a placeholder from its content."""
-    content = text.strip('{} \t\n\r')
-    if content in HEADING_PLACEHOLDERS:
-        return 'heading1'
-    if content in CODE_PLACEHOLDERS:
-        return 'code'
-    if content in INFO_PLACEHOLDERS:
-        return 'info_cell'
-    return 'body'
+def _build_cell_index(inspect_data: dict):
+    """From inspect JSON, build: cell_ref[(r,c)]=cell_info, label_cells set, placeholder_map."""
+    cell_ref = {}
+    label_cells = set()
+    placeholder_map = {}
+    if not inspect_data:
+        return cell_ref, label_cells, placeholder_map
+    for table in inspect_data.get("tables", []):
+        for ci in table.get("cells", []):
+            key = (ci["row"], ci["column"])
+            cell_ref[key] = ci
+            if ci.get("is_label"):
+                label_cells.add(key)
+            for p in ci.get("paragraphs", []):
+                for rn in p.get("runs", []):
+                    for ph in re.findall(r'\{\{[^}]+\}\}', rn.get("text_preview", "")):
+                        if ph not in placeholder_map:
+                            placeholder_map[ph] = key
+    return cell_ref, label_cells, placeholder_map
 
 
-def _snapshot_cell_styles(doc: Document) -> dict:
-    """Snapshot original cell formatting (font/size/bold/align) for each cell index."""
-    snap = {}
-    for table_idx, table in enumerate(doc.tables):
-        for row_idx, row in enumerate(table.rows):
-            for col_idx, cell in enumerate(row.cells):
-                for p in cell.paragraphs:
-                    for r in p.runs:
-                        key = (table_idx, row_idx, col_idx)
-                        snap.setdefault(key, {
-                            'font_name': r.font.name or getattr(r.font, 'name', None) or '宋体',
-                            'font_size': r.font.size,
-                            'bold': r.font.bold,
-                            'align': p.alignment,
-                        })
-    return snap
+def _get_fmt_from_ref(cell_ref_key, row, col, inspect_data):
+    """Extract font_name, size_pt, bold, east_asia from the first non-empty run in cell_ref."""
+    ci = None
+    for table in inspect_data.get("tables", []):
+        for c in table.get("cells", []):
+            if c["row"] == row and c["column"] == col:
+                ci = c
+                break
+        if ci:
+            break
+    if not ci:
+        return None, None, None, None
+    for p in ci.get("paragraphs", []):
+        for rn in p.get("runs", []):
+            if rn.get("text_preview", "").strip():
+                return (rn.get("font_name"),
+                        rn.get("font_size_pt"),
+                        rn.get("bold"),
+                        rn.get("east_asia"))
+    return None, None, None, None
 
 
-def _apply_cell_styles_from_snapshot(cell, style_ref: dict):
-    """Apply formatting from a snapshot dict to a cell's content."""
-    for p in cell.paragraphs:
-        if style_ref.get('align') is not None:
-            p.alignment = style_ref['align']
-        for r in p.runs:
-            if style_ref.get('font_name'):
-                r.font.name = style_ref['font_name']
-                set_cjk_font(r, style_ref['font_name'])
-            if style_ref.get('font_size'):
-                r.font.size = style_ref['font_size']
-            if style_ref.get('bold'):
-                r.font.bold = True
-
-
-def _post_process_formatting(doc: Document, style_snap: dict):
-    """Post-process: apply styles based on content role and snapshot data."""
-    for table_idx, table in enumerate(doc.tables):
-        for row_idx, row in enumerate(table.rows):
-            for col_idx, cell in enumerate(row.cells):
-                cell_text = cell.text.strip()
-                if not cell_text:
-                    continue
-
-                # 1) Try to apply snapshot style (inheritance from template)
-                snap_key = (table_idx, row_idx, col_idx)
-                if snap_key in style_snap:
-                    _apply_cell_styles_from_snapshot(cell, style_snap[snap_key])
-                else:
-                    # 2) Fallback: detect role from content
-                    role = _detect_placeholder_role(cell_text)
-                    style = STYLE_MAP.get(role, STYLE_MAP['body'])
-                    apply_style_to_paragraph(cell.paragraphs[0], style)
-
-                # 3) Normalize: remove extra empty paragraphs (fix 2.3)
-                _remove_extra_empty_paragraphs(cell)
-
-    # Apply style mapping to body paragraphs too
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
-        role = _detect_placeholder_role(text)
-        style = STYLE_MAP.get(role, STYLE_MAP['body'])
-        apply_style_to_paragraph(para, style)
-
-
-def _remove_extra_empty_paragraphs(container):
-    """Remove excessive empty paragraphs from a cell/body (fix 2.3)."""
-    paragraphs = container.paragraphs
-    # If more than 1 para and some are empty, collapse consecutive empties
-    if len(paragraphs) <= 1:
-        return
-    i = 0
-    while i < len(paragraphs):
-        if i > 0 and not paragraphs[i].text.strip() and not paragraphs[i - 1].text.strip():
-            # Found consecutive empty paras — remove this one
-            p_element = paragraphs[i]._element
-            p_element.getparent().remove(p_element)
-            # Don't increment i; the list shifted
-        else:
-            i += 1
-
-
-def _insert_image_placeholders(doc: Document, image_instructions: list):
-    """Insert image placeholder markers where requested.
-    
-    image_instructions: list of dicts with keys:
-      - placeholder: text marker in the template (e.g. '[insert_image_接线图]')
-      - label: human-readable label (e.g. '请在此处粘贴：硬件接线照片')
-    """
-    for para in doc.paragraphs:
-        for instr in image_instructions:
-            if instr['placeholder'] in para.text:
-                para.clear()
-                run = para.add_run(f"\n[{instr['label']}]\n")
-                run.font.name = '宋体'
-                run.font.size = Pt(10)
-                run.font.color.rgb = None  # keep default
-                run.italic = True
-                para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-
-
-def fill_template(template_path: Path, data_path: Path, output_path: Path,
-                  style: str = "normal", image_placeholders: list = None):
-    """Fill template with data."""
+def fill_with_inspect(template_path: Path, data_path: Path, output_path: Path,
+                      inspect_data: dict = None):
+    """Fill template using inspect data for exact formatting."""
     if not HAS_DOCX:
         return {"error": "Missing dependencies: python-docx, docxtpl"}
 
     result = {
-        "success": False,
-        "template": str(template_path),
-        "output": str(output_path),
-        "placeholders_filled": [],
-        "placeholders_missing": [],
-        "style_applied": style,
-        "formatting_warnings": [],
+        "success": False, "template": str(template_path), "output": str(output_path),
+        "placeholders_filled": [], "placeholders_missing": [], "warnings": [],
     }
 
+    cell_ref, label_cells, placeholder_map = _build_cell_index(inspect_data)
+
+    suffix = template_path.suffix.lower()
+    if suffix == '.doc':
+        conv = _convert_to_docx(template_path)
+        if not conv:
+            result["error"] = "Cannot process .doc. Install LibreOffice or save as .docx."
+            return result
+        template_path = conv
+
     try:
-        # Load data
         with open(data_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+    except Exception as e:
+        result["error"] = f"Cannot read data: {e}"
+        return result
 
-        # Handle .doc → .docx conversion
-        suffix = template_path.suffix.lower()
-        if suffix == '.doc':
-            converted = _convert_to_docx(template_path)
-            if converted is None:
-                result["error"] = (
-                    "Cannot process .doc template. Please:\n"
-                    "1. Install LibreOffice (https://www.libreoffice.org/)\n"
-                    "2. Or manually save as .docx in Word / WPS"
-                )
-                return result
-            template_path = converted
-
-        # ═══ Phase 1: Snapshot template cell styles ═══
-        temp_doc = Document(template_path)
-        style_snap = _snapshot_cell_styles(temp_doc)
-
-        # ═══ Phase 2: Render via docxtpl ═══
+    try:
         shutil.copy(template_path, output_path)
         doc = DocxTemplate(output_path)
         doc.render(data)
         doc.save(output_path)
+    except Exception as e:
+        result["error"] = f"docxtpl render failed: {e}"
+        return result
 
-        # ═══ Phase 3: Post-process formatting ═══
+    try:
         final_doc = Document(output_path)
 
-        # 3a — CJK font fix
-        for para in final_doc.paragraphs:
-            for run in para.runs:
-                if any('\u4e00' <= c <= '\u9fff' for c in run.text):
-                    set_cjk_font(run)
+        for t_idx, table in enumerate(final_doc.tables):
+            for r_idx, row in enumerate(table.rows):
+                for c_idx, cell in enumerate(row.cells):
+                    key = (r_idx, c_idx)
 
-        # 3b — Style inheritance + heading/body mapping + empty para removal
-        _post_process_formatting(final_doc, style_snap)
+                    # PRESERVE label cells — do NOT modify (fix 2)
+                    if inspect_data and key in label_cells:
+                        orig = cell_ref[key].get("text", "")
+                        cur = cell.text.strip()
+                        if cur and cur != orig:
+                            # Label was overwritten — flag warning
+                            # Attempt to restore original text
+                            cell.paragraphs[0].clear()
+                            run = cell.paragraphs[0].add_run(orig)
+                        continue
 
-        # 3c — Image placeholders (2.4)
-        if image_placeholders:
-            _insert_image_placeholders(final_doc, image_placeholders)
+                    # Apply template-correct formatting from inspect data (fix 1, 5)
+                    ref = cell_ref.get(key)
+                    if ref and inspect_data:
+                        fname, fsize, fbold, fea = _get_fmt_from_ref(ref, r_idx, c_idx, inspect_data)
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                _set_run_font(run, font_name=fname, font_size_pt=fsize,
+                                              bold=fbold, east_asia=fea)
 
         final_doc.save(output_path)
 
-        # ═══ Phase 4: Verify ═══
+        # Post-fill diff check
+        if inspect_data:
+            check = Document(output_path)
+            result["warnings"] = _compare_with_inspect(check, inspect_data)
+
+        missing = _verify_no_missing_placeholders(Document(output_path))
+        result["placeholders_missing"] = missing
         result["success"] = True
-        verify_doc = Document(output_path)
-        full_text = " ".join([p.text for p in verify_doc.paragraphs])
-        remaining = re.findall(r'\{\{([^}]+)\}\}', full_text)
-        result["placeholders_missing"] = remaining
 
     except Exception as e:
-        result["error"] = str(e)
+        result["error"] = f"Post-processing failed: {e}"
 
     return result
 
 
 def verify_original_unchanged(template_path: Path, original_hash: str) -> bool:
     with open(template_path, 'rb') as f:
-        current_hash = hashlib.sha256(f.read()).hexdigest()
-    return current_hash == original_hash
+        return hashlib.sha256(f.read()).hexdigest() == original_hash
+
+
+# Backward-compatible alias for tests
+fill_template = fill_with_inspect
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Fill DOCX template')
-    parser.add_argument('--template', '-t', required=True, help='Template DOCX file')
-    parser.add_argument('--data', '-d', required=True, help='JSON data file')
-    parser.add_argument('--output', '-o', required=True, help='Output DOCX file')
-    parser.add_argument('--style', '-s', choices=['perfect', 'normal'], default='normal',
-                        help='normal=标准报告(90+分, 日常首选); perfect=极尽详尽(特殊场景)')
-    parser.add_argument('--image-placeholders', help='JSON file with image placeholder definitions')
+    parser = argparse.ArgumentParser(description='Fill DOCX template (requires inspect data)')
+    parser.add_argument('--template', '-t', required=True)
+    parser.add_argument('--data', '-d', required=True)
+    parser.add_argument('--output', '-o', required=True)
+    parser.add_argument('--inspect', help='JSON from inspect_template.py (required for correct formatting)')
+    parser.add_argument('--style', choices=['perfect', 'normal'], default='normal')
     args = parser.parse_args()
 
     template_path = Path(args.template)
     data_path = Path(args.data)
     output_path = Path(args.output)
 
-    if not template_path.exists():
-        print(f"Error: Template not found: {template_path}", file=sys.stderr)
-        sys.exit(1)
-    if not data_path.exists():
-        print(f"Error: Data file not found: {data_path}", file=sys.stderr)
-        sys.exit(1)
+    for p, label in [(template_path, 'Template'), (data_path, 'Data')]:
+        if not p.exists():
+            print(f"Error: {label} not found: {p}", file=sys.stderr); sys.exit(1)
 
     with open(template_path, 'rb') as f:
         original_hash = hashlib.sha256(f.read()).hexdigest()
 
-    # Load image placeholder instructions
-    image_placeholders = None
-    if args.image_placeholders:
-        ip_path = Path(args.image_placeholders)
-        if ip_path.exists():
-            with open(ip_path, 'r', encoding='utf-8') as f:
-                image_placeholders = json.load(f)
+    inspect_data = None
+    if args.inspect:
+        ip = Path(args.inspect)
+        if ip.exists():
+            with open(ip, 'r', encoding='utf-8') as f:
+                inspect_data = json.load(f)
+            if inspect_data.get("summary", {}).get("label_cells", 0) > 0:
+                print(f"Preserving {inspect_data['summary']['label_cells']} label cells", file=sys.stderr)
 
-    result = fill_template(template_path, data_path, output_path, args.style, image_placeholders)
+    result = fill_with_inspect(template_path, data_path, output_path, inspect_data)
 
     if not verify_original_unchanged(template_path, original_hash):
-        print("Error: Original template was modified!", file=sys.stderr)
-        sys.exit(1)
+        print("Error: Original template was modified!", file=sys.stderr); sys.exit(1)
+
+    if result.get("warnings"):
+        for w in result["warnings"]:
+            print(f"WARNING: {w}", file=sys.stderr)
 
     print(json.dumps(result, indent=2, ensure_ascii=False))
     sys.exit(0 if result.get("success") else 1)

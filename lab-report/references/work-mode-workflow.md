@@ -152,9 +152,44 @@ This returns a JSON structure containing:
 
 The parser uses the regex `\{\{([^}]+)\}\}` to find Jinja2-style placeholders in both paragraphs and table cells. The returned `placeholders` list is your data contract: every item in this list must have a corresponding value in the template data JSON.
 
----
+## Step 3.5: ⭐ Mandatory — Inspect Template Formatting (fix 1)
 
-## Step 4: Map Placeholders to Data Sources
+**Before writing ANY fill code, run inspect_template.py to see the exact template formatting.**
+
+This is the single most important step. Never guess font/size/alignment.
+
+```bash
+# Dump full formatting map
+python scripts/inspect_template.py --input path/to/template.docx --format human
+```
+
+Also save the JSON for the fill script:
+```bash
+python scripts/inspect_template.py --input path/to/template.docx --format json > .lab-report/template-inspect.json
+```
+
+### What the inspect output tells you
+
+| Field | What it means | Your action |
+|-------|---------------|-------------|
+| `is_label: true` | This cell is a fixed label (like "提交文档", "实验名称"). | **PRESERVE** — do NOT overwrite. |
+| `is_placeholder: true` | This cell has `{{placeholder}}` | Replace only this cell's value, keep formatting. |
+| `font_name`, `font_size_pt` | Exact font and size used in each cell | **Use EXACTLY these values** — no guessing. |
+| `east_asia` | CJK font override (e.g. "黑体") | **Only set eastAsia where template has it.** |
+| `bold` | Whether this run is bold | Match exactly. |
+
+### ⚠️ Critical rules derived from inspect data
+
+1. **LABEL CELLS are sacred.** The inspect output marks them with `is_label: true`. Never overwrite them. If a template has "提交文档" in R2C3, keep it there.
+2. **Font sizes are template-dictated.** If the template says 宋体 12pt, use 宋体 12pt — not 宋体 10pt.
+3. **eastAsia is template-dictated.** Only set `w:eastAsia` on runs where the template already has it. If the template uses eastAsia=NULL on body text, do NOT add it there.
+4. **Row 3 may be a merged header row.** Some templates have a large title cell spanning columns — preserve it.
+
+### Example: building the data JSON after inspect
+
+After reading the inspect output, you know exactly what each cell expects. Build the data JSON accordingly, using the placeholder names found by the script.
+
+---
 
 Each placeholder maps to one of three data sources:
 
@@ -296,14 +331,15 @@ When generating content for placeholders from student descriptions or guide cont
 
 ## Step 6: Fill the Template
 
-Run the template filling script:
+**Always pass the inspect JSON** so the script preserves labels and uses correct formatting:
 
 ```bash
 python scripts/fill_template.py \
   --template path/to/template.docx \
   --data .lab-report/template-data.json \
+  --inspect .lab-report/template-inspect.json \
   --output output/实验报告.docx \
-  --style perfect
+  --style normal
 ```
 
 ### Style Options
@@ -315,19 +351,17 @@ python scripts/fill_template.py \
 
 Both styles apply CJK font fixes (宋体 for body text, 黑体 for headings) via the `w:eastAsia` attribute.
 
-### What the Script Does (Enhanced)
+### What the Script Does (Inspect-based)
 
 1. Copies the template to the output path (never modifies the original)
-2. **Snapshots** original cell formatting (font, size, bold, alignment) for style inheritance
-3. Renders all `{{placeholder}}` fields using Jinja2 via `docxtpl`
-4. **Post-processes formatting**:
-   - Inherits original cell styles from template (fixes font/size/alignment drift — fix 2.1)
-   - Applies heading/body differentiation: 黑体 for section headers, 宋体 for body text (fix 2.2)
-   - Removes extra empty paragraphs between content sections (fix 2.3)
-5. Inserts styled image placeholder markers if `--image-placeholders` is provided (fix 2.4)
-6. Verifies CJK fonts on all runs containing Chinese characters
-7. Checks for unreplaced placeholders in the output
-8. Returns a JSON result with `success`, `placeholders_filled`, and `placeholders_missing`
+2. Loads the **inspect data** — knows exactly which cells are labels (preserved), which are placeholders
+3. Renders all `{{placeholder}}` fields via docxtpl
+4. **Restores any accidentally overwritten label cells** (safety net — fix 2)
+5. **Applies formatting from inspect data only** — no guessing, no blanket eastAsia (fix 1, 5)
+6. Verifies CJK fonts only where template had eastAsia
+7. **Post-fill diff check** — detects any label cells that got overwritten and warns
+8. Checks for unreplaced placeholders
+9. Returns JSON with `success`, `warnings`, `placeholders_missing`
 
 ---
 
@@ -387,6 +421,12 @@ python scripts/git_manager.py --dry-run
 [Start Work Mode]
        │
        ▼
+  Confirm experiment metadata (date/location/teacher/group) ← NEW
+       │
+       ▼
+  Ask style (normal / perfect)
+       │
+       ▼
   Progress exists? ──No──► Ask student to describe experiment
        │                         │
       Yes                        │
@@ -395,36 +435,39 @@ python scripts/git_manager.py --dry-run
   Read progress.json        Collect description
        │                         │
        └─────────┬───────────────┘
-                 │
-                 ▼
-        Collect student info
-        (student_info.py)
-                 │
-                 ▼
-        Parse template DOCX
-        (parse_docx.py)
-                 │
-                 ▼
-        Map placeholders → data sources
-                 │
-                 ▼
-        Build template-data.json
-                 │
-                 ▼
-        Fill template
-        (fill_template.py --style perfect)
-                 │
-                 ▼
-        Verify: no unreplaced placeholders?
-           │              │
-          Yes             No ──► Fix data, re-fill
-           │
-           ▼
-        Auto-commit (optional)
-        (git_manager.py)
-                 │
-                 ▼
-           [Done]
+                  │
+                  ▼
+         Collect student info
+         (student_info.py)
+                  │
+                  ▼
+         ⭐ Inspect template ← NEW: MANDATORY
+         (inspect_template.py --format json)
+                  │
+                  ▼
+         Map placeholders → data sources
+                  │
+                  ▼
+         Build template-data.json
+                  │
+                  ▼
+         Fill template (with --inspect data)
+         (fill_template.py --inspect inspect.json)
+                  │
+                  ▼
+         Post-fill diff check ← NEW: auto detect label overwrites
+                  │
+                  ▼
+         Verify: no unreplaced placeholders?
+            │              │
+           Yes             No ──► Fix data, re-fill
+            │
+            ▼
+         Stage for review (default — visible in sidebar)
+         (git_manager.py)
+                  │
+                  ▼
+            [Done]
 ```
 
 ---
@@ -438,10 +481,12 @@ python scripts/git_manager.py --dry-run
 | Data JSON missing keys | Prompt student for missing values; use "暂无" as fallback |
 | `fill_template.py` fails | Check error message; common causes: missing dependency, corrupted template |
 | Unreplaced placeholders remain | Identify which ones, ask student for values, rebuild data JSON |
-| CJK characters display as tofu | Re-run fill; the script applies CJK fonts automatically |
+| CJK characters display as tofu | Check if template had eastAsia set; if not, don't add it — the issue is elsewhere |
 | Student info file not found | Create template with `student_info.py --create`, ask student to fill it in |
 | Photos/videos found but not analyzed | Delegate `read` or `look_at` for each image; extract code values and wiring details |
-| Image placeholders missing in output | Ensure `.lab-report/image-placeholders.json` exists and references match template markers |
+| **Label cell overwritten** | Revert to template, re-run with `--inspect` flag. The script now auto-restores labels. |
+| **Font/size mismatch** | Did you run `inspect_template.py` before filling? The inspect output has exact values. |
+| **eastAsia over-applied** | Did you use `--inspect`? Without it, the script falls back to old behavior. Always use `--inspect`. |
 
 ---
 
@@ -454,21 +499,28 @@ python scripts/progress_manager.py
 # Get student info
 python scripts/student_info.py --json
 
+# ⭐ MANDATORY: Inspect template before fill
+python scripts/inspect_template.py --input template.docx --format human
+python scripts/inspect_template.py --input template.docx --format json > .lab-report/template-inspect.json
+
 # Create student info template
 python scripts/student_info.py --create
 
-# Parse template DOCX
+# Parse template DOCX (optional — inspect does this too)
 python scripts/parse_docx.py --input template.docx
 
-# Fill template (normal style)
-python scripts/fill_template.py -t template.docx -d data.json -o output.docx --style normal
+# Fill template with inspect data
+python scripts/fill_template.py \
+  -t template.docx \
+  -d .lab-report/template-data.json \
+  --inspect .lab-report/template-inspect.json \
+  -o output.docx --style normal
 
-# Fill template (perfect style, de-AI, with image placeholders)
-python scripts/fill_template.py -t template.docx -d data.json -o output.docx \
-  --style perfect --image-placeholders .lab-report/image-placeholders.json
-
-# Fill template and save config for reuse
-python scripts/fill_template.py -t template.docx -d data.json -o output.docx --style normal
+# Fill template (perfect style)
+python scripts/fill_template.py \
+  -t template.docx -d .lab-report/template-data.json \
+  --inspect .lab-report/template-inspect.json \
+  -o output.docx --style perfect
 
 # Stage (default — appears in review sidebar)
 python scripts/git_manager.py

@@ -52,15 +52,19 @@ See `references/work-mode-workflow.md` for detailed workflow.
 
 Summary:
 1. **Confirm metadata**: AI asks for experiment date, location, teacher, group members using `question` tool
-2. **Ask style**: Offer `perfect` (professional) or `normal` (standard) style
+2. **Ask style**: Offer `perfect` (detail) or `normal` (standard, 90+)
 3. Check if `.lab-report/progress.json` exists (from Guide Mode)
 4. Extract experiment data from progress OR ask student to describe
 5. **Analyze photos**: Scan directory for experiment photos/videos → `read`/`look_at` each to extract code values, wiring details, phenomenon
-6. Parse template DOCX → identify `{{placeholders}}`
-7. Build JSON data context from student info + experiment metadata + photo analysis
-8. Call `scripts/fill_template.py` to generate report (with style inheritance from template cells)
-9. Generate new Word file (original template untouched, font/size/alignment inherited)
-10. **Stage changes**: default `git add` only — files appear in review sidebar for user to inspect. Use `--commit` to auto-commit if user prefers.
+6. **⭐ Inspect template FIRST**: Run `scripts/inspect_template.py --input template.docx --format human` — dump exact cell-level formatting (font/size/bold/eastAsia/alignment) before writing any code
+7. Parse template DOCX → identify `{{placeholders}}`
+8. Build JSON data context from student info + experiment metadata + photo analysis + inspect data
+9. Call `scripts/fill_template.py --inspect .lab-report/template-inspect.json` to generate report
+   - Script auto-preserves label cells (does NOT overwrite "提交文档" etc.)
+   - Script applies formatting from inspect data only (no guessing font/size/eastAsia)
+   - Post-fill diff check detects accidental overwrites
+10. Generate new Word file (original template untouched)
+11. **Stage changes** (default `git add` only — files appear in review sidebar)
 
 ## File Format Support
 | Format | Read | Script |
