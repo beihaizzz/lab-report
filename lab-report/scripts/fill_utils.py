@@ -230,3 +230,47 @@ def get_table_grid(table):
         row_cells = list(row.cells)
         rows.append(row_cells)
     return rows
+
+
+# ── 图片插入 ──────────────────────────────────────────────────────────────────────
+
+DEFAULT_IMAGE_WIDTH = Inches(5.2)
+
+def insert_image_or_placeholder(para, image_path: str | None = None,
+                                caption: str = "此处插入照片",
+                                width=DEFAULT_IMAGE_WIDTH):
+    """在段落中插入图片，或插入占位提示。
+    
+    如果提供了 image_path 且文件存在：
+    - 插入图片，宽度默认 5.2in（A4 纵向适合），居中
+    - 下方添加居中图注（宋体 10.5pt）
+    
+    如果 image_path 为 None 或文件不存在：
+    - 插入虚线框样式的占位文本 "[此处插入照片]"
+    - 居中、灰色、斜体
+    """
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    if image_path:
+        try:
+            img_path = Path(image_path)
+            if img_path.exists():
+                run = para.add_run()
+                run.add_picture(str(img_path), width=width)
+                # 添加图注
+                cap_para = para.insert_paragraph_after(para)
+                cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                cap_run = cap_para.add_run(f"图 {caption}")
+                cap_run.font.name = FONT_BODY
+                cap_run.font.size = SIZE_IMAGE_HINT
+                return True
+        except Exception:
+            pass  # 图片加载失败，走占位符
+
+    # 占位符
+    run = para.add_run(f"\n[ {caption} ]\n")
+    run.font.name = FONT_BODY
+    run.font.size = SIZE_IMAGE_HINT
+    run.italic = True
+    run.font.color.rgb = None
+    return False

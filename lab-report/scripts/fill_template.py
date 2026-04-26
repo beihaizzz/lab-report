@@ -300,6 +300,14 @@ def verify_original_unchanged(template_path: Path, original_hash: str) -> bool:
         return hashlib.sha256(f.read()).hexdigest() == original_hash
 
 
+def _insert_image_at_match(doc: Document, match_text: str, image_path: str | None, caption: str):
+    """Find a paragraph containing match_text and insert an image(or placeholder) after it."""
+    for para in doc.paragraphs:
+        if match_text and match_text in para.text:
+            fill_utils.insert_image_or_placeholder(para, image_path, caption)
+            break
+
+
 # Backward-compatible alias for tests
 fill_template = fill_with_inspect
 
@@ -311,6 +319,7 @@ def main():
     parser.add_argument('--data', '-d', help='JSON 数据文件（placeholder 模式）')
     parser.add_argument('--cells', help='JSON 单元格直填文件（无 placeholder 模式）')
     parser.add_argument('--inspect', help='inspect_template.py 输出的 JSON')
+    parser.add_argument('--images', help='JSON 图片插入配置（按段落文本匹配插入位置）')
     parser.add_argument('--style', choices=['perfect', 'normal'], default='normal')
     args = parser.parse_args()
 
@@ -349,6 +358,21 @@ def main():
 
     if not verify_original_unchanged(template_path, original_hash):
         print("Error: Original template was modified!", file=sys.stderr); sys.exit(1)
+
+    # ═══ 图片插入（后处理） ═══
+    if args.images and result.get("success"):
+        images_path = Path(args.images)
+        if images_path.exists():
+            with open(images_path, 'r', encoding='utf-8') as f:
+                images_config = json.load(f)
+            # images_config: [{"match": "文本片段", "path": "screenshots/x.jpg", "caption": "图注"}, ...]
+            out_doc = Document(output_path)
+            for img_cfg in images_config:
+                match_text = img_cfg.get("match", "")
+                img_path = img_cfg.get("path")
+                caption = img_cfg.get("caption", "此处插入照片")
+                _insert_image_at_match(out_doc, match_text, img_path, caption)
+            out_doc.save(output_path)
 
     if result.get("warnings"):
         for w in result["warnings"]:

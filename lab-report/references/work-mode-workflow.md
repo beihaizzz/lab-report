@@ -319,17 +319,33 @@ In the report content, add these markers at appropriate locations. The `fill_tem
 
 ### Image Insertion into the Report (Step 4.5b)
 
-After analyzing photos, insert key ones into the report:
+**If the project directory contains experiment screenshots/photos**, scan and insert them.
 
-1. **Select** 1-2 representative photos per experiment stage（接线图、现象图、结果图）
-2. **Insert** after the corresponding text paragraph using python-docx:
-   ```python
-   from docx.shared import Inches
-   run = paragraph.add_run()
-   run.add_picture("screenshots/wiring.jpg", width=Inches(5.2))
-   ```
-3. **Add caption** below each image: 宋体 10.5pt, centered, "图1 硬件接线图"
-4. **Standard image width**: `Inches(5.2)` for A4 portrait page
+#### Scan for images
+```bash
+glob("**/*.jpg"); glob("**/*.png"); glob("**/screenshots/*"); glob("**/实验照片/*")
+```
+
+#### For each image, analyze with `read`/`look_at`, then build config:
+```json
+[
+  {"match": "实验步骤", "path": "screenshots/wiring.jpg", "caption": "硬件接线图"},
+  {"match": "实验现象", "path": null,                    "caption": "此处插入LED流水灯照片"}
+]
+```
+- `match`: Text in a paragraph to find insertion point
+- `path`: Image path. **null** → styled placeholder `[此处插入照片]`
+- `caption`: Image caption or placeholder label
+
+#### Fill with images
+```bash
+python scripts/fill_template.py \
+  -t template.docx -d data.json -o output.docx \
+  --inspect inspect.json \
+  --images .lab-report/image-config.json
+```
+
+**Result**: Valid images → centered, 5.2in wide, caption below. Missing → grey italic placeholder.
 
 ---
 
