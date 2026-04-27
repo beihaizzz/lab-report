@@ -1,9 +1,9 @@
 ---
-name: lab-report
+name: labmate
 description: |
-  Lab Report skill for university students. Helps complete lab experiments with two modes.
-  Trigger: `/lab` command. Subcommands: `-init`, `-work`, `-guide`, `-update`, `-help`.
-  Keywords: lab report, 实验报告, experiment report, /lab-report, /lab,
+  大学生时间拯救计划之LabMate：指导你完成实验或帮你写实验报告。
+  Trigger: `/lab` command. Subcommands: `-init`, `-work`, `-guide`, `-update`, `-review`, `-help`.
+  Keywords: lab report, 实验报告, experiment report, /lab-report, /lab, labmate,
   实验指导, .docx template, .pdf guide, experiment writeup.
 metadata:
   openclaw:
@@ -19,10 +19,18 @@ metadata:
         package: "docxtpl"
 ---
 
-# Lab Report Skill
+# LabMate Skill
 
 ## Overview
-Lab Report helps university students complete experiments and write reports. Two modes:
+
+**大学生时间拯救计划之LabMate** — 一个帮你完成实验报告的 OpenCode Skill。
+
+两种模式：
+- **Guide Mode**：AI 读取实验指导书，展示步骤、同步进度、提醒截图、遇到问题逐步引导
+- **Work Mode**：AI 读取报告模板，从指导书或实验过程提取内容，填入模板生成 Word 文件
+
+**扩展能力**：部分实验类型（如 Unity、STM32 开发）可以通过 **MCP 扩展** 让 LabMate 直接操作实验环境和设备，突破"只能写文档"的边界。查看你的实验类型是否支持 MCP 集成。
+
 **Current version: v0.9.0** (< v1.0)
 - **Guide Mode**: AI reads your experiment guide (PDF/DOCX/PPTX), shows all steps, tracks your progress via `.lab-report/progress.json`, reminds you to take screenshots at key points, and provides step-by-step help when stuck. Say "继续" to sync progress.
 - **Work Mode**: AI reads your report template (DOCX with `{{placeholders}}`), extracts experiment content from Guide Mode progress OR your description, fills the template using docxtpl, and generates a new Word file. Original template is NEVER modified.

@@ -1,26 +1,27 @@
-# lab-report
+# LabMate
+
+> **大学生时间拯救计划之LabMate** — 指导你完成实验，或帮你写实验报告。
+
+![logo](logo.png)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-**OpenCode Skill** — 帮助大学生完成实验报告的 AI 助手。指导你做实验，或者帮你写报告。
-
----
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)](https://github.com/beihaizzz/labmate.skill)
 
 ## For Human 🧑‍🎓
 
-### 🤖 一键安装：把这个发给你的 AI Agent
+### 🤖 一键安装
 
-> 复制下面这段话，发给你的 AI 编程助手（OpenCode / Cursor / Claude Code 等），它会帮你下载并安装这个 skill。
+把这个发给你的 AI 编程助手（OpenCode / Cursor / Claude Code 等），它会帮你下载并安装：
 
 ```
-请帮我安装 lab-report skill。这是一个帮助大学生完成实验报告的 OpenCode Skill。
+请帮我安装 LabMate skill。这是一个帮助大学生完成实验报告的 OpenCode Skill。
 
 安装步骤：
-1. 克隆仓库：git clone https://github.com/beihaizzz/lab-report.skill.git
-2. 将 lab-report/lab-report/ 目录复制到 OpenCode skill 目录：
-   - Windows: C:\Users\<用户名>\.claude\skills\lab-report\
-   - macOS/Linux: ~/.claude/skills/lab-report/
-3. 复制时排除 .venv、__pycache__、.pytest_cache、uv.lock、lab_report.egg-info 目录
+1. 克隆仓库：git clone https://github.com/beihaizzz/labmate.skill.git
+2. 将 labmate/ 目录复制到 OpenCode skill 目录：
+   - Windows: C:\Users\<用户名>\.claude\skills\labmate\
+   - macOS/Linux: ~/.claude/skills/labmate/
+3. 复制时排除 .venv、__pycache__、.pytest_cache、uv.lock、labmate.egg-info 目录
 
 这个 skill 的功能：
 - Guide Mode（指导模式）：读取实验指导书（PDF/Word/PPT），展示实验步骤，同步进度，提醒截图
@@ -31,6 +32,26 @@
 
 安装完成后，帮我确认 skill 是否可以被发现。
 ```
+
+### 📖 命令速查
+
+| 命令 | 作用 |
+|------|------|
+| `/lab -init` | 初始化项目 |
+| `/lab -work` | Work Mode — 生成实验报告 |
+| `/lab -guide` | Guide Mode — 指导完成实验 |
+| `/lab -update` | 重新扫描文件 |
+| `/lab -review` | 生成反馈报告 |
+| `/lab -help` | 帮助 |
+
+### 🚀 扩展能力 — MCP
+
+部分实验（如 Unity、STM32、Arduino 开发），LabMate 可以通过 MCP 协议直接操作实验环境：
+- Unity MCP → 操作场景、修改脚本、运行测试
+- 串口/调试 MCP → 烧录代码、读取传感器数据
+- 更多 MCP 扩展正在开发中
+
+如果你的实验工具支持 MCP，告诉 LabMate 启用即可。
 
 ### 📖 使用教程
 
@@ -67,13 +88,13 @@
 在课程文件夹中打开 OpenCode，运行：
 
 ```
-/lab-report init
+/lab -init
 ```
 
 Skill 会自动发现文件夹中的所有资料，配置好环境。加上 `--git` 可以启用自动版本管理：
 
 ```
-/lab-report init --git
+/lab -init --git
 ```
 
 #### 第四步：选择模式
@@ -119,16 +140,16 @@ Skill 会自动发现文件夹中的所有资料，配置好环境。加上 `--g
 
 ## For AI 🤖
 
-> 当用户询问关于 lab-report 的技术问题时，以下内容供你参考。
+> 当用户询问关于 LabMate 的技术问题时，以下内容供你参考。
 
 ### 项目概述
 
-lab-report 是一个 OpenCode Skill，以 Python 脚本 + Markdown 工作流文档的形式运行。核心思想：将实验报告的「指导实验」和「撰写报告」两个阶段拆分为独立的工作流，通过 JSON 状态文件在流程间传递数据。
+LabMate 是一个 OpenCode Skill，以 Python 脚本 + Markdown 工作流文档的形式运行。核心思想：将实验报告的「指导实验」和「撰写报告」两个阶段拆分为独立的工作流，通过 JSON 状态文件在流程间传递数据。
 
 ### 目录结构
 
 ```
-lab-report/
+labmate/
 ├── SKILL.md                     # ⭐ 入口：YAML frontmatter + 使用说明
 ├── pyproject.toml               # uv 项目配置
 ├── scripts/
@@ -137,7 +158,7 @@ lab-report/
 │   ├── parse_docx.py            # DOCX → JSON + {{placeholder}} 检测
 │   ├── parse_pptx.py            # PPTX → JSON/Markdown
 │   ├── fill_template.py         # docxtpl Jinja2 模板填充 + CJK 字体处理
-│   ├── progress_manager.py      # .lab-report/progress.json CRUD
+│   ├── progress_manager.py      # .labmate/progress.json CRUD
 │   ├── student_info.py          # 学生信息.md 发现/创建
 │   ├── git_manager.py           # Git add + commit 自动提交
 │   └── check_deps.py            # uv + Python + 包依赖预检
@@ -158,9 +179,9 @@ lab-report/
 
 ```
 ┌─────────────────────────────────────────┐
-│                /lab-report init          │
+│                /lab -init                 │
 │  check_deps → discover_files →           │
-│  student_info → create .lab-report/     │
+│  student_info → create .labmate/        │
 └──────────────────┬──────────────────────┘
                    │
          ┌─────────┴──────────┐
@@ -173,7 +194,7 @@ lab-report/
    remind screenshots      parse template
          │                 fill_template.py
          ▼                    │
-   .lab-report/           output.docx
+   .labmate/              output.docx
    progress.json              │
          │               git_manager.py
          └──────────┬─────────┘
@@ -183,7 +204,7 @@ lab-report/
 
 ### 关键数据流
 
-**Guide Mode → Work Mode**：通过 `.lab-report/progress.json` 传递。
+**Guide Mode → Work Mode**：通过 `.labmate/progress.json` 传递。
 
 ```json
 {
@@ -207,14 +228,14 @@ lab-report/
 
 ```bash
 # 依赖预检
-uv run python lab-report/scripts/check_deps.py --json
+uv run python labmate/scripts/check_deps.py --json
 
 # PDF 解析
-uv run --with pdfplumber --with pymupdf4llm python lab-report/scripts/parse_pdf.py \
+uv run --with pdfplumber --with pymupdf4llm python labmate/scripts/parse_pdf.py \
   --input guide.pdf --format json
 
 # 模板填充
-uv run --with python-docx --with docxtpl python lab-report/scripts/fill_template.py \
+uv run --with python-docx --with docxtpl python labmate/scripts/fill_template.py \
   --template template.docx --data data.json --output output.docx --style normal
 ```
 
@@ -236,7 +257,7 @@ uv run --with python-docx --with docxtpl python lab-report/scripts/fill_template
 ```bash
 uv run --with python-docx --with docxtpl --with pdfplumber \
        --with pymupdf4llm --with python-pptx \
-       pytest lab-report/tests/ -v
+       pytest labmate/tests/ -v
 ```
 
 测试分为 8 个文件：`test_check_deps.py`、`test_fill_template.py`、`test_git_manager.py`、`test_init_project.py`、`test_parse_docx.py`、`test_parse_pdf.py`、`test_parse_pptx.py`、`test_progress_manager.py`、`test_student_info.py`
