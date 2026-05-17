@@ -219,6 +219,14 @@ python scripts/inspect_template.py --input path/to/template.docx --format json >
    - 仅在指导书**没有覆盖**时才自行撰写
    - 如果指导书内容与模板章节标题匹配，优先使用指导书内容
 
+### [检查点 1/4] STOP — 模板分析完成后自检
+
+在继续之前，AI 必须确认：
+- [ ] inspect_template 已运行，输出已保存到 .labmate/template-inspect.json
+- [ ] AI 已读取 inspect 输出：知道表格数、label cells 位置、字体/字号/对齐
+- [ ] 特别检查：合并单元格的数量和位置（gridSpan）
+- [ ] 如上述任一未完成 → 补做后再继续，不得跳过
+
 ---
 
 ## Step 3.6: ⭐ Auto-Prepare Template (templates without placeholders)
@@ -392,6 +400,15 @@ python scripts/fill_template.py \
 
 **Result**: Valid images → centered, 5.2in wide, caption below. Missing → grey italic placeholder.
 
+### [检查点 2/4] STOP — 图片分析完成后自检
+
+在继续之前，AI 必须确认：
+- [ ] 项目中的图片文件总数：__ 张
+- [ ] 已调用 look_at 分析的图片数：__ 张
+- [ ] 两数是否相等？如不等，列出未分析的图片文件名
+- [ ] image-map.json 已保存，generated_by 字段正确
+- [ ] 如有图片未分析 → 立即补做 look_at
+
 ---
 
 Create a JSON file (e.g., `.labmate/template-data.json`) with all required fields:
@@ -426,6 +443,14 @@ When generating content for placeholders from student descriptions or guide cont
 - Keep data sections factual and numerical
 - Conclusions should reference specific data points
 - Avoid banned AI phrases (see `fill_template.py` BANNED_WORDS): 首先, 其次, 最后, 总而言之, 值得注意的是, 综上所述, 不可否认
+
+### [检查点 3/4] STOP — 填充前自检
+
+在调用 fill_template.py 之前，AI 必须确认：
+- [ ] template-data.json 所有字段已填写，无空值
+- [ ] image-config.json 已根据 image-map.json 生成
+- [ ] 在内容中搜索"大概""应该""估计""约"：如发现 → 替换为实际值
+- [ ] 实验名称、学生信息、日期等元数据已二次确认
 
 ---
 
@@ -486,6 +511,15 @@ The script automatically sets CJK fonts, but verify manually if the output looks
 - Body text should use 宋体 (SimSun)
 - Headings should use 黑体 (SimHei)
 - The `w:eastAsia` attribute on `w:rFonts` ensures CJK characters render correctly
+
+### [检查点 4/4] STOP — 生成后自检
+
+在声明"完成"之前，AI 必须确认：
+- [ ] validate_docx.py 已运行，输出 valid=true
+- [ ] validate_docx.py --images 已运行，所有图片已匹配
+- [ ] section_map.py 已运行，section-map.json 已生成
+- [ ] 报告文件名符合规范（学号 姓名《实验N：实验名》.docx）
+- [ ] 如任一检查失败 → 修复后再声明完成
 
 ---
 
